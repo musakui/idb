@@ -1,167 +1,82 @@
-import { wrap } from './wrap-idb-value.js';
+type ValuesOf<T> = T extends { [K in keyof T]: infer U } ? U : never;
 
-export interface OpenDBCallbacks<DBTypes extends DBSchema | unknown> {
-  /**
-   * Called if this version of the database has never been opened before. Use it to specify the
-   * schema for the database.
-   *
-   * @param database A database instance that you can use to add/remove stores and indexes.
-   * @param oldVersion Last version of the database opened by the user.
-   * @param newVersion Whatever new version you provided.
-   * @param transaction The transaction for this upgrade.
-   * This is useful if you need to get data from other stores as part of a migration.
-   * @param event The event object for the associated 'upgradeneeded' event.
-   */
-  upgrade?(
-    database: IDBPDatabase<DBTypes>,
-    oldVersion: number,
-    newVersion: number | null,
-    transaction: IDBPTransaction<
-      DBTypes,
-      StoreNames<DBTypes>[],
-      'versionchange'
-    >,
-    event: IDBVersionChangeEvent,
-  ): void;
-  /**
-   * Called if there are older versions of the database open on the origin, so this version cannot
-   * open.
-   *
-   * @param currentVersion Version of the database that's blocking this one.
-   * @param blockedVersion The version of the database being blocked (whatever version you provided to `openDB`).
-   * @param event The event object for the associated `blocked` event.
-   */
-  blocked?(
-    currentVersion: number,
-    blockedVersion: number | null,
-    event: IDBVersionChangeEvent,
-  ): void;
-  /**
-   * Called if this connection is blocking a future version of the database from opening.
-   *
-   * @param currentVersion Version of the open database (whatever version you provided to `openDB`).
-   * @param blockedVersion The version of the database that's being blocked.
-   * @param event The event object for the associated `versionchange` event.
-   */
-  blocking?(
-    currentVersion: number,
-    blockedVersion: number | null,
-    event: IDBVersionChangeEvent,
-  ): void;
-  /**
-   * Called if the browser abnormally terminates the connection.
-   * This is not called when `db.close()` is called.
-   */
-  terminated?(): void;
-}
-
-/**
- * Open a database.
- *
- * @param name Name of the database.
- * @param version Schema version.
- * @param callbacks Additional callbacks.
- */
-export function openDB<DBTypes extends DBSchema | unknown = unknown>(
-  name: string,
-  version?: number,
-  { blocked, upgrade, blocking, terminated }: OpenDBCallbacks<DBTypes> = {},
-): Promise<IDBPDatabase<DBTypes>> {
-  const request = indexedDB.open(name, version);
-  const openPromise = wrap(request) as Promise<IDBPDatabase<DBTypes>>;
-
-  if (upgrade) {
-    request.addEventListener('upgradeneeded', (event) => {
-      upgrade(
-        wrap(request.result) as IDBPDatabase<DBTypes>,
-        event.oldVersion,
-        event.newVersion,
-        wrap(request.transaction!) as unknown as IDBPTransaction<
-          DBTypes,
-          StoreNames<DBTypes>[],
-          'versionchange'
-        >,
-        event,
-      );
-    });
-  }
-
-  if (blocked) {
-    request.addEventListener('blocked', (event) =>
-      blocked(
-        // Casting due to https://github.com/microsoft/TypeScript-DOM-lib-generator/pull/1405
-        (event as IDBVersionChangeEvent).oldVersion,
-        (event as IDBVersionChangeEvent).newVersion,
-        event as IDBVersionChangeEvent,
-      ),
-    );
-  }
-
-  openPromise
-    .then((db) => {
-      if (terminated) db.addEventListener('close', () => terminated());
-      if (blocking) {
-        db.addEventListener('versionchange', (event) =>
-          blocking(event.oldVersion, event.newVersion, event),
-        );
-      }
-    })
-    .catch(() => {});
-
-  return openPromise;
-}
-
-export interface DeleteDBCallbacks {
-  /**
-   * Called if there are connections to this database open, so it cannot be deleted.
-   *
-   * @param currentVersion Version of the database that's blocking the delete operation.
-   * @param event The event object for the associated `blocked` event.
-   */
-  blocked?(currentVersion: number, event: IDBVersionChangeEvent): void;
-}
-
-/**
- * Delete a database.
- *
- * @param name Name of the database.
- */
-export function deleteDB(
-  name: string,
-  { blocked }: DeleteDBCallbacks = {},
-): Promise<void> {
-  const request = indexedDB.deleteDatabase(name);
-
-  if (blocked) {
-    request.addEventListener('blocked', (event) =>
-      blocked(
-        // Casting due to https://github.com/microsoft/TypeScript-DOM-lib-generator/pull/1405
-        (event as IDBVersionChangeEvent).oldVersion,
-        event as IDBVersionChangeEvent,
-      ),
-    );
-  }
-
-  return wrap(request).then(() => undefined);
-}
-
-export { unwrap, wrap } from './wrap-idb-value.js';
-
-// === The rest of this file is type defs ===
 type KeyToKeyNoIndex<T> = {
   [K in keyof T]: string extends K ? never : number extends K ? never : K;
 };
-type ValuesOf<T> = T extends { [K in keyof T]: infer U } ? U : never;
-type KnownKeys<T> = ValuesOf<KeyToKeyNoIndex<T>>;
 
-type Omit<T, K> = Pick<T, Exclude<keyof T, K>>;
+type IDBPDatabaseExtends = Omit<
+  IDBDatabase,
+  'createObjectStore' | 'deleteObjectStore' | 'transaction' | 'objectStoreNames'
+>;
 
-export interface DBSchema {
-  [s: string]: DBSchemaValue;
-}
+type IDBPObjectStoreExtends = Omit<
+  IDBObjectStore,
+  | 'transaction'
+  | 'add'
+  | 'clear'
+  | 'count'
+  | 'createIndex'
+  | 'delete'
+  | 'get'
+  | 'getAll'
+  | 'getAllKeys'
+  | 'getKey'
+  | 'index'
+  | 'openCursor'
+  | 'openKeyCursor'
+  | 'put'
+  | 'indexNames'
+>;
+
+type IDBPIndexExtends = Omit<
+  IDBIndex,
+  | 'objectStore'
+  | 'count'
+  | 'get'
+  | 'getAll'
+  | 'getAllKeys'
+  | 'getKey'
+  | 'openCursor'
+  | 'openKeyCursor'
+>;
+
+type IDBPTransactionExtends = Omit<
+  IDBTransaction,
+  'db' | 'objectStore' | 'objectStoreNames'
+>;
+
+type IDBPCursorExtends = Omit<
+  IDBCursor,
+  | 'key'
+  | 'primaryKey'
+  | 'source'
+  | 'advance'
+  | 'continue'
+  | 'continuePrimaryKey'
+  | 'delete'
+  | 'update'
+>;
+
+type CursorSource<
+  DBTypes extends DBSchema | unknown,
+  TxStores extends ArrayLike<StoreNames<DBTypes>>,
+  StoreName extends StoreNames<DBTypes>,
+  IndexName extends IndexNames<DBTypes, StoreName> | unknown,
+  Mode extends IDBTransactionMode = 'readonly',
+> = IndexName extends IndexNames<DBTypes, StoreName>
+  ? IDBPIndex<DBTypes, TxStores, StoreName, IndexName, Mode>
+  : IDBPObjectStore<DBTypes, TxStores, StoreName, Mode>;
+
+type CursorKey<
+  DBTypes extends DBSchema | unknown,
+  StoreName extends StoreNames<DBTypes>,
+  IndexName extends IndexNames<DBTypes, StoreName> | unknown,
+> = IndexName extends IndexNames<DBTypes, StoreName>
+  ? IndexKey<DBTypes, StoreName, IndexName>
+  : StoreKey<DBTypes, StoreName>;
 
 interface IndexKeys {
-  [s: string]: IDBValidKey;
+  [index: string]: IDBValidKey;
 }
 
 interface DBSchemaValue {
@@ -170,13 +85,17 @@ interface DBSchemaValue {
   indexes?: IndexKeys;
 }
 
+export interface DBSchema {
+  [store: string]: DBSchemaValue;
+}
+
 /**
  * Extract known object store names from the DB schema type.
  *
  * @template DBTypes DB schema type, or unknown if the DB isn't typed.
  */
 export type StoreNames<DBTypes extends DBSchema | unknown> =
-  DBTypes extends DBSchema ? KnownKeys<DBTypes> : string;
+  DBTypes extends DBSchema ? ValuesOf<KeyToKeyNoIndex<DBTypes>> : string;
 
 /**
  * Extract database value types from the DB schema type.
@@ -228,29 +147,6 @@ export type IndexKey<
     : IDBValidKey
   : IDBValidKey;
 
-type CursorSource<
-  DBTypes extends DBSchema | unknown,
-  TxStores extends ArrayLike<StoreNames<DBTypes>>,
-  StoreName extends StoreNames<DBTypes>,
-  IndexName extends IndexNames<DBTypes, StoreName> | unknown,
-  Mode extends IDBTransactionMode = 'readonly',
-> = IndexName extends IndexNames<DBTypes, StoreName>
-  ? IDBPIndex<DBTypes, TxStores, StoreName, IndexName, Mode>
-  : IDBPObjectStore<DBTypes, TxStores, StoreName, Mode>;
-
-type CursorKey<
-  DBTypes extends DBSchema | unknown,
-  StoreName extends StoreNames<DBTypes>,
-  IndexName extends IndexNames<DBTypes, StoreName> | unknown,
-> = IndexName extends IndexNames<DBTypes, StoreName>
-  ? IndexKey<DBTypes, StoreName, IndexName>
-  : StoreKey<DBTypes, StoreName>;
-
-type IDBPDatabaseExtends = Omit<
-  IDBDatabase,
-  'createObjectStore' | 'deleteObjectStore' | 'transaction' | 'objectStoreNames'
->;
-
 /**
  * A variation of DOMStringList with precise string types
  */
@@ -261,24 +157,13 @@ export interface TypedDOMStringList<T extends string> extends DOMStringList {
   [Symbol.iterator](): IterableIterator<T>;
 }
 
-interface IDBTransactionOptions {
-  /**
-   * The durability of the transaction.
-   *
-   * The default is "default". Using "relaxed" provides better performance, but with fewer
-   * guarantees. Web applications are encouraged to use "relaxed" for ephemeral data such as caches
-   * or quickly changing records, and "strict" in cases where reducing the risk of data loss
-   * outweighs the impact to performance and power.
-   */
-  durability?: 'default' | 'strict' | 'relaxed';
-}
-
 export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
   extends IDBPDatabaseExtends {
   /**
    * The names of stores in the database.
    */
   readonly objectStoreNames: TypedDOMStringList<StoreNames<DBTypes>>;
+
   /**
    * Creates a new object store.
    *
@@ -293,12 +178,14 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     Name,
     'versionchange'
   >;
+
   /**
    * Deletes the object store with the given name.
    *
    * Throws a "InvalidStateError" DOMException if not called within an upgrade transaction.
    */
   deleteObjectStore(name: StoreNames<DBTypes>): void;
+
   /**
    * Start a new transaction.
    *
@@ -314,6 +201,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     mode?: Mode,
     options?: IDBTransactionOptions,
   ): IDBPTransaction<DBTypes, [Name], Mode>;
+
   transaction<
     Names extends ArrayLike<StoreNames<DBTypes>>,
     Mode extends IDBTransactionMode = 'readonly',
@@ -342,6 +230,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     value: StoreValue<DBTypes, Name>,
     key?: StoreKey<DBTypes, Name> | IDBKeyRange,
   ): Promise<StoreKey<DBTypes, Name>>;
+
   /**
    * Deletes all records in a store.
    *
@@ -351,6 +240,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
    * @param storeName Name of the store.
    */
   clear(name: StoreNames<DBTypes>): Promise<void>;
+
   /**
    * Retrieves the number of records matching the given query in a store.
    *
@@ -364,6 +254,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     storeName: Name,
     key?: StoreKey<DBTypes, Name> | IDBKeyRange | null,
   ): Promise<number>;
+
   /**
    * Retrieves the number of records matching the given query in an index.
    *
@@ -382,6 +273,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     indexName: IndexName,
     key?: IndexKey<DBTypes, Name, IndexName> | IDBKeyRange | null,
   ): Promise<number>;
+
   /**
    * Deletes records in a store matching the given query.
    *
@@ -395,6 +287,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     storeName: Name,
     key: StoreKey<DBTypes, Name> | IDBKeyRange,
   ): Promise<void>;
+
   /**
    * Retrieves the value of the first record in a store matching the query.
    *
@@ -410,6 +303,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     storeName: Name,
     query: StoreKey<DBTypes, Name> | IDBKeyRange,
   ): Promise<StoreValue<DBTypes, Name> | undefined>;
+
   /**
    * Retrieves the value of the first record in an index matching the query.
    *
@@ -430,6 +324,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     indexName: IndexName,
     query: IndexKey<DBTypes, Name, IndexName> | IDBKeyRange,
   ): Promise<StoreValue<DBTypes, Name> | undefined>;
+
   /**
    * Retrieves all values in a store that match the query.
    *
@@ -445,6 +340,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     query?: StoreKey<DBTypes, Name> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreValue<DBTypes, Name>[]>;
+
   /**
    * Retrieves all values in an index that match the query.
    *
@@ -465,6 +361,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     query?: IndexKey<DBTypes, Name, IndexName> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreValue<DBTypes, Name>[]>;
+
   /**
    * Retrieves the keys of records in a store matching the query.
    *
@@ -480,6 +377,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     query?: StoreKey<DBTypes, Name> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreKey<DBTypes, Name>[]>;
+
   /**
    * Retrieves the keys of records in an index matching the query.
    *
@@ -500,6 +398,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     query?: IndexKey<DBTypes, Name, IndexName> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreKey<DBTypes, Name>[]>;
+
   /**
    * Retrieves the key of the first record in a store that matches the query.
    *
@@ -515,6 +414,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     storeName: Name,
     query: StoreKey<DBTypes, Name> | IDBKeyRange,
   ): Promise<StoreKey<DBTypes, Name> | undefined>;
+
   /**
    * Retrieves the key of the first record in an index that matches the query.
    *
@@ -535,6 +435,7 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
     indexName: IndexName,
     query: IndexKey<DBTypes, Name, IndexName> | IDBKeyRange,
   ): Promise<StoreKey<DBTypes, Name> | undefined>;
+
   /**
    * Put an item in the database.
    *
@@ -554,11 +455,6 @@ export interface IDBPDatabase<DBTypes extends DBSchema | unknown = unknown>
   ): Promise<StoreKey<DBTypes, Name>>;
 }
 
-type IDBPTransactionExtends = Omit<
-  IDBTransaction,
-  'db' | 'objectStore' | 'objectStoreNames'
->;
-
 export interface IDBPTransaction<
   DBTypes extends DBSchema | unknown = unknown,
   TxStores extends ArrayLike<StoreNames<DBTypes>> = ArrayLike<
@@ -570,24 +466,29 @@ export interface IDBPTransaction<
    * The transaction's mode.
    */
   readonly mode: Mode;
+
   /**
    * The names of stores in scope for this transaction.
    */
   readonly objectStoreNames: TypedDOMStringList<TxStores[number]>;
+
   /**
    * The transaction's connection.
    */
   readonly db: IDBPDatabase<DBTypes>;
+
   /**
    * Promise for the completion of this transaction.
    */
   readonly done: Promise<void>;
+
   /**
    * The associated object store, if the transaction covers a single store, otherwise undefined.
    */
   readonly store: TxStores[1] extends undefined
     ? IDBPObjectStore<DBTypes, TxStores, TxStores[0], Mode>
     : undefined;
+
   /**
    * Returns an IDBObjectStore in the transaction's scope.
    */
@@ -595,25 +496,6 @@ export interface IDBPTransaction<
     name: StoreName,
   ): IDBPObjectStore<DBTypes, TxStores, StoreName, Mode>;
 }
-
-type IDBPObjectStoreExtends = Omit<
-  IDBObjectStore,
-  | 'transaction'
-  | 'add'
-  | 'clear'
-  | 'count'
-  | 'createIndex'
-  | 'delete'
-  | 'get'
-  | 'getAll'
-  | 'getAllKeys'
-  | 'getKey'
-  | 'index'
-  | 'openCursor'
-  | 'openKeyCursor'
-  | 'put'
-  | 'indexNames'
->;
 
 export interface IDBPObjectStore<
   DBTypes extends DBSchema | unknown = unknown,
@@ -627,10 +509,12 @@ export interface IDBPObjectStore<
    * The names of indexes in the store.
    */
   readonly indexNames: TypedDOMStringList<IndexNames<DBTypes, StoreName>>;
+
   /**
    * The associated transaction.
    */
   readonly transaction: IDBPTransaction<DBTypes, TxStores, Mode>;
+
   /**
    * Add a value to the store.
    *
@@ -642,16 +526,19 @@ export interface IDBPObjectStore<
         value: StoreValue<DBTypes, StoreName>,
         key?: StoreKey<DBTypes, StoreName> | IDBKeyRange,
       ) => Promise<StoreKey<DBTypes, StoreName>>;
+
   /**
    * Deletes all records in store.
    */
   clear: Mode extends 'readonly' ? undefined : () => Promise<void>;
+
   /**
    * Retrieves the number of records matching the given query.
    */
   count(
     key?: StoreKey<DBTypes, StoreName> | IDBKeyRange | null,
   ): Promise<number>;
+
   /**
    * Creates a new index in store.
    *
@@ -664,12 +551,14 @@ export interface IDBPObjectStore<
         options?: IDBIndexParameters,
       ) => IDBPIndex<DBTypes, TxStores, StoreName, IndexName, Mode>
     : undefined;
+
   /**
    * Deletes records in store matching the given query.
    */
   delete: Mode extends 'readonly'
     ? undefined
     : (key: StoreKey<DBTypes, StoreName> | IDBKeyRange) => Promise<void>;
+
   /**
    * Retrieves the value of the first record matching the query.
    *
@@ -678,6 +567,7 @@ export interface IDBPObjectStore<
   get(
     query: StoreKey<DBTypes, StoreName> | IDBKeyRange,
   ): Promise<StoreValue<DBTypes, StoreName> | undefined>;
+
   /**
    * Retrieves all values that match the query.
    *
@@ -688,6 +578,7 @@ export interface IDBPObjectStore<
     query?: StoreKey<DBTypes, StoreName> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreValue<DBTypes, StoreName>[]>;
+
   /**
    * Retrieves the keys of records matching the query.
    *
@@ -698,6 +589,7 @@ export interface IDBPObjectStore<
     query?: StoreKey<DBTypes, StoreName> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreKey<DBTypes, StoreName>[]>;
+
   /**
    * Retrieves the key of the first record that matches the query.
    *
@@ -706,12 +598,14 @@ export interface IDBPObjectStore<
   getKey(
     query: StoreKey<DBTypes, StoreName> | IDBKeyRange,
   ): Promise<StoreKey<DBTypes, StoreName> | undefined>;
+
   /**
    * Get a query of a given name.
    */
   index<IndexName extends IndexNames<DBTypes, StoreName>>(
     name: IndexName,
   ): IDBPIndex<DBTypes, TxStores, StoreName, IndexName, Mode>;
+
   /**
    * Opens a cursor over the records matching the query.
    *
@@ -730,6 +624,7 @@ export interface IDBPObjectStore<
     unknown,
     Mode
   > | null>;
+
   /**
    * Opens a cursor over the keys matching the query.
    *
@@ -742,6 +637,7 @@ export interface IDBPObjectStore<
     query?: StoreKey<DBTypes, StoreName> | IDBKeyRange | null,
     direction?: IDBCursorDirection,
   ): Promise<IDBPCursor<DBTypes, TxStores, StoreName, unknown, Mode> | null>;
+
   /**
    * Put an item in the store.
    *
@@ -753,6 +649,7 @@ export interface IDBPObjectStore<
         value: StoreValue<DBTypes, StoreName>,
         key?: StoreKey<DBTypes, StoreName> | IDBKeyRange,
       ) => Promise<StoreKey<DBTypes, StoreName>>;
+
   /**
    * Iterate over the store.
    */
@@ -765,6 +662,7 @@ export interface IDBPObjectStore<
       Mode
     >
   >;
+
   /**
    * Iterate over the records matching the query.
    *
@@ -784,18 +682,6 @@ export interface IDBPObjectStore<
     >
   >;
 }
-
-type IDBPIndexExtends = Omit<
-  IDBIndex,
-  | 'objectStore'
-  | 'count'
-  | 'get'
-  | 'getAll'
-  | 'getAllKeys'
-  | 'getKey'
-  | 'openCursor'
-  | 'openKeyCursor'
->;
 
 export interface IDBPIndex<
   DBTypes extends DBSchema | unknown = unknown,
@@ -820,6 +706,7 @@ export interface IDBPIndex<
   count(
     key?: IndexKey<DBTypes, StoreName, IndexName> | IDBKeyRange | null,
   ): Promise<number>;
+
   /**
    * Retrieves the value of the first record matching the query.
    *
@@ -828,6 +715,7 @@ export interface IDBPIndex<
   get(
     query: IndexKey<DBTypes, StoreName, IndexName> | IDBKeyRange,
   ): Promise<StoreValue<DBTypes, StoreName> | undefined>;
+
   /**
    * Retrieves all values that match the query.
    *
@@ -838,6 +726,7 @@ export interface IDBPIndex<
     query?: IndexKey<DBTypes, StoreName, IndexName> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreValue<DBTypes, StoreName>[]>;
+
   /**
    * Retrieves the keys of records matching the query.
    *
@@ -848,6 +737,7 @@ export interface IDBPIndex<
     query?: IndexKey<DBTypes, StoreName, IndexName> | IDBKeyRange | null,
     count?: number,
   ): Promise<StoreKey<DBTypes, StoreName>[]>;
+
   /**
    * Retrieves the key of the first record that matches the query.
    *
@@ -856,6 +746,7 @@ export interface IDBPIndex<
   getKey(
     query: IndexKey<DBTypes, StoreName, IndexName> | IDBKeyRange,
   ): Promise<StoreKey<DBTypes, StoreName> | undefined>;
+
   /**
    * Opens a cursor over the records matching the query.
    *
@@ -874,6 +765,7 @@ export interface IDBPIndex<
     IndexName,
     Mode
   > | null>;
+
   /**
    * Opens a cursor over the keys matching the query.
    *
@@ -886,6 +778,7 @@ export interface IDBPIndex<
     query?: IndexKey<DBTypes, StoreName, IndexName> | IDBKeyRange | null,
     direction?: IDBCursorDirection,
   ): Promise<IDBPCursor<DBTypes, TxStores, StoreName, IndexName, Mode> | null>;
+
   /**
    * Iterate over the index.
    */
@@ -898,6 +791,7 @@ export interface IDBPIndex<
       Mode
     >
   >;
+
   /**
    * Iterate over the records matching the query.
    *
@@ -920,18 +814,6 @@ export interface IDBPIndex<
   >;
 }
 
-type IDBPCursorExtends = Omit<
-  IDBCursor,
-  | 'key'
-  | 'primaryKey'
-  | 'source'
-  | 'advance'
-  | 'continue'
-  | 'continuePrimaryKey'
-  | 'delete'
-  | 'update'
->;
-
 export interface IDBPCursor<
   DBTypes extends DBSchema | unknown = unknown,
   TxStores extends ArrayLike<StoreNames<DBTypes>> = ArrayLike<
@@ -945,20 +827,24 @@ export interface IDBPCursor<
    * The key of the current index or object store item.
    */
   readonly key: CursorKey<DBTypes, StoreName, IndexName>;
+
   /**
    * The key of the current object store item.
    */
   readonly primaryKey: StoreKey<DBTypes, StoreName>;
+
   /**
    * Returns the IDBObjectStore or IDBIndex the cursor was opened from.
    */
   readonly source: CursorSource<DBTypes, TxStores, StoreName, IndexName, Mode>;
+
   /**
    * Advances the cursor a given number of records.
    *
    * Resolves to null if no matching records remain.
    */
   advance<T>(this: T, count: number): Promise<T | null>;
+
   /**
    * Advance the cursor by one record (unless 'key' is provided).
    *
@@ -970,6 +856,7 @@ export interface IDBPCursor<
     this: T,
     key?: CursorKey<DBTypes, StoreName, IndexName>,
   ): Promise<T | null>;
+
   /**
    * Advance the cursor by given keys.
    *
@@ -985,10 +872,12 @@ export interface IDBPCursor<
     key: CursorKey<DBTypes, StoreName, IndexName>,
     primaryKey: StoreKey<DBTypes, StoreName>,
   ): Promise<T | null>;
+
   /**
    * Delete the current record.
    */
   delete: Mode extends 'readonly' ? undefined : () => Promise<void>;
+
   /**
    * Updated the current record.
    */
@@ -997,6 +886,7 @@ export interface IDBPCursor<
     : (
         value: StoreValue<DBTypes, StoreName>,
       ) => Promise<StoreKey<DBTypes, StoreName>>;
+
   /**
    * Iterate over the cursor.
    */
@@ -1018,7 +908,7 @@ type IDBPCursorIteratorValueExtends<
   'advance' | 'continue' | 'continuePrimaryKey'
 >;
 
-export interface IDBPCursorIteratorValue<
+interface IDBPCursorIteratorValue<
   DBTypes extends DBSchema | unknown = unknown,
   TxStores extends ArrayLike<StoreNames<DBTypes>> = ArrayLike<
     StoreNames<DBTypes>
@@ -1037,12 +927,14 @@ export interface IDBPCursorIteratorValue<
    * Advances the cursor a given number of records.
    */
   advance<T>(this: T, count: number): void;
+
   /**
    * Advance the cursor by one record (unless 'key' is provided).
    *
    * @param key Advance to the index or object store with a key equal to or greater than this value.
    */
   continue<T>(this: T, key?: CursorKey<DBTypes, StoreName, IndexName>): void;
+
   /**
    * Advance the cursor by given keys.
    *
@@ -1058,7 +950,7 @@ export interface IDBPCursorIteratorValue<
   ): void;
 }
 
-export interface IDBPCursorWithValue<
+interface IDBPCursorWithValue<
   DBTypes extends DBSchema | unknown = unknown,
   TxStores extends ArrayLike<StoreNames<DBTypes>> = ArrayLike<
     StoreNames<DBTypes>
@@ -1071,6 +963,7 @@ export interface IDBPCursorWithValue<
    * The value of the current item.
    */
   readonly value: StoreValue<DBTypes, StoreName>;
+
   /**
    * Iterate over the cursor.
    */
@@ -1099,7 +992,7 @@ type IDBPCursorWithValueIteratorValueExtends<
   'advance' | 'continue' | 'continuePrimaryKey'
 >;
 
-export interface IDBPCursorWithValueIteratorValue<
+interface IDBPCursorWithValueIteratorValue<
   DBTypes extends DBSchema | unknown = unknown,
   TxStores extends ArrayLike<StoreNames<DBTypes>> = ArrayLike<
     StoreNames<DBTypes>
@@ -1118,12 +1011,14 @@ export interface IDBPCursorWithValueIteratorValue<
    * Advances the cursor a given number of records.
    */
   advance<T>(this: T, count: number): void;
+
   /**
    * Advance the cursor by one record (unless 'key' is provided).
    *
    * @param key Advance to the index or object store with a key equal to or greater than this value.
    */
   continue<T>(this: T, key?: CursorKey<DBTypes, StoreName, IndexName>): void;
+
   /**
    * Advance the cursor by given keys.
    *
@@ -1138,3 +1033,105 @@ export interface IDBPCursorWithValueIteratorValue<
     primaryKey: StoreKey<DBTypes, StoreName>,
   ): void;
 }
+
+/**
+ * @param value The thing to enhance.
+ */
+export interface WrapItem {
+  (value: IDBDatabase): IDBPDatabase;
+  (value: IDBIndex): IDBPIndex;
+  (value: IDBObjectStore): IDBPObjectStore;
+  (value: IDBTransaction): IDBPTransaction;
+  (value: IDBOpenDBRequest): Promise<IDBPDatabase | undefined>;
+  <T>(value: IDBRequest<T>): Promise<T>;
+}
+
+/**
+ * @param value The enhanced object to revert.
+ */
+export interface Unwrap {
+  (value: IDBPCursorWithValue<any, any, any, any, any>): IDBCursorWithValue;
+  (value: IDBPCursor<any, any, any, any, any>): IDBCursor;
+  (value: IDBPDatabase): IDBDatabase;
+  (value: IDBPIndex<any, any, any, any, any>): IDBIndex;
+  (value: IDBPObjectStore<any, any, any, any>): IDBObjectStore;
+  (value: IDBPTransaction<any, any, any>): IDBTransaction;
+  <T extends any>(value: Promise<IDBPDatabase<T>>): IDBOpenDBRequest;
+  (value: Promise<IDBPDatabase>): IDBOpenDBRequest;
+  <T>(value: Promise<T>): IDBRequest<T>;
+}
+
+export interface OpenDBCallbacks<DBTypes extends DBSchema | unknown> {
+  /**
+   * Called if this version of the database has never been opened before. Use it to specify the
+   * schema for the database.
+   *
+   * @param database A database instance that you can use to add/remove stores and indexes.
+   * @param oldVersion Last version of the database opened by the user.
+   * @param newVersion Whatever new version you provided.
+   * @param transaction The transaction for this upgrade.
+   * This is useful if you need to get data from other stores as part of a migration.
+   * @param event The event object for the associated 'upgradeneeded' event.
+   */
+  upgrade?(
+    database: IDBPDatabase<DBTypes>,
+    oldVersion: number,
+    newVersion: number | null,
+    transaction: IDBPTransaction<
+      DBTypes,
+      StoreNames<DBTypes>[],
+      'versionchange'
+    >,
+    event: IDBVersionChangeEvent,
+  ): void;
+
+  /**
+   * Called if there are older versions of the database open on the origin, so this version cannot
+   * open.
+   *
+   * @param currentVersion Version of the database that's blocking this one.
+   * @param blockedVersion The version of the database being blocked (whatever version you provided to `openDB`).
+   * @param event The event object for the associated `blocked` event.
+   */
+  blocked?(
+    currentVersion: number,
+    blockedVersion: number | null,
+    event: IDBVersionChangeEvent,
+  ): void;
+
+  /**
+   * Called if this connection is blocking a future version of the database from opening.
+   *
+   * @param currentVersion Version of the open database (whatever version you provided to `openDB`).
+   * @param blockedVersion The version of the database that's being blocked.
+   * @param event The event object for the associated `versionchange` event.
+   */
+  blocking?(
+    currentVersion: number,
+    blockedVersion: number | null,
+    event: IDBVersionChangeEvent,
+  ): void;
+
+  /**
+   * Called if the browser abnormally terminates the connection.
+   * This is not called when `db.close()` is called.
+   */
+  terminated?(): void;
+}
+
+export interface DeleteDBCallbacks {
+  /**
+   * Called if there are connections to this database open, so it cannot be deleted.
+   *
+   * @param currentVersion Version of the database that's blocking the delete operation.
+   * @param event The event object for the associated `blocked` event.
+   */
+  blocked?(currentVersion: number, event: IDBVersionChangeEvent): void;
+}
+
+export type IDBProxyable =
+  | IDBDatabase
+  | IDBObjectStore
+  | IDBTransaction
+  | IDBIndex
+  | IDBCursor;
