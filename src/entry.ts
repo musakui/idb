@@ -53,6 +53,10 @@ export interface OpenDBCallbacks<DBTypes extends DBSchema | unknown> {
    * This is not called when `db.close()` is called.
    */
   terminated?(): void;
+  /**
+   * Convenience property for providing the database schema when using JSDoc.
+   */
+  schema?: DBTypes;
 }
 
 /**
@@ -153,8 +157,6 @@ type KeyToKeyNoIndex<T> = {
 };
 type ValuesOf<T> = T extends { [K in keyof T]: infer U } ? U : never;
 type KnownKeys<T> = ValuesOf<KeyToKeyNoIndex<T>>;
-
-type Omit<T, K> = Pick<T, Exclude<keyof T, K>>;
 
 export interface DBSchema {
   [s: string]: DBSchemaValue;
