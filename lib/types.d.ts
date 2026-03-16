@@ -1,4 +1,4 @@
-type IndexOptions<KeyPath extends string | string[]> = {
+export type IndexOptions<KeyPath extends string | string[] = string> = {
 	name: string
 	path: KeyPath
 	unique?: boolean
@@ -12,13 +12,14 @@ type DeleteStore = {
 
 type DeleteIndex = {
 	type: 'index.delete'
+	store: string
 	name: string
 }
 
 type CreateStore = {
 	type: 'store.create'
 	name: string
-	indices?: IndexOptions[]
+	indexes?: IndexOptions[]
 }
 
 type CreateIndex = {
